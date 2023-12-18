@@ -626,7 +626,7 @@ fn gen_method_item(
     let attrs = filter_attrs(&item.attrs);
 
     // Check self type and proxy type combination
-    check_receiver_compatible(proxy_type, self_arg, &trait_def.ident, sig.span());
+    let (compatible_receiver, receiver_error) = check_receiver_compatible(proxy_type, self_arg, &trait_def.ident, sig.span());
 
     // Generate the list of argument used to call the method.
     let (inputs, args) = get_arg_list(sig.inputs.iter());
@@ -695,31 +695,33 @@ fn gen_method_item(
     // Generate the body of the function. This mainly depends on the self type,
     // but also on the proxy type.
     let fn_name = &sig.ident;
-    let body = match self_arg {
-        // Fn proxy types get a special treatment
-        _ if proxy_type.is_fn() => {
-            quote! { ({self})(#args) }
-        }
+    let body = if compatible_receiver {
+        match self_arg {
+            // Fn proxy types get a special treatment
+            _ if proxy_type.is_fn() => {
+                quote! { ({self})(#args) }
+            }
 
-        // No receiver
-        SelfType::None => {
+            // No receiver
+            SelfType::None => {
             // The proxy type is a reference, smart pointer or Box.
-            quote! { #proxy_ty_param::#fn_name #generic_types(#args) }
-        }
+                quote! { #proxy_ty_param::#fn_name #generic_types(#args) }
+            }
 
-        // Receiver `self` (by value)
-        SelfType::Value => {
-            // The proxy type is a Box.
-            quote! { #proxy_ty_param::#fn_name #generic_types(*self, #args) }
-        }
+            // Receiver `self` (by value)
+            SelfType::Value => {
+                // The proxy type is a Box.
+                quote! { #proxy_ty_param::#fn_name #generic_types(*self, #args) }
+            }
 
-        // `&self` or `&mut self` receiver
-        SelfType::Ref | SelfType::Mut => {
-            // The proxy type could be anything in the `Ref` case, and `&mut`
-            // or Box in the `Mut` case.
-            quote! { #proxy_ty_param::#fn_name #generic_types(self, #args) }
+            // `&self` or `&mut self` receiver
+            SelfType::Ref | SelfType::Mut => {
+                // The proxy type could be anything in the `Ref` case, and `&mut`
+                // or Box in the `Mut` case.
+                quote! { #proxy_ty_param::#fn_name #generic_types(self, #args) }
+            }
         }
-    };
+    } else { quote! { unimplemented!( #receiver_error ) } };
 
     // Combine body with signature
     Ok(quote! { #(#attrs)* #sig { #body }})
@@ -766,30 +768,23 @@ fn check_receiver_compatible(
     self_arg: SelfType,
     trait_name: &Ident,
     sig_span: Span2,
-) {
+) -> (bool, &'static str) {
     match (proxy_type, self_arg) {
-        (ProxyType::Ref, SelfType::Mut) | (ProxyType::Ref, SelfType::Value) => {
-            emit_error!(
-                sig_span,
-                "the trait `{}` cannot be auto-implemented for immutable references, because \
+        (ProxyType::Ref, SelfType::Mut) | (ProxyType::Ref, SelfType::Value) => (
+            false,
+            format!("the trait `{}` cannot be auto-implemented for immutable references, because \
                     this method has a `{}` receiver",
                     trait_name,
-                    self_arg.as_str().unwrap();
-
-                note = "only `&self` and no receiver are allowed";
-            );
-        }
-
-        (ProxyType::RefMut, SelfType::Value) => {
-            emit_error!(
-                sig_span,
+                    self_arg.as_str().unwrap()).leak()
+        ),
+        (ProxyType::RefMut, SelfType::Value) => (
+            false
+            format!(
                 "the trait `{}` cannot be auto-implemented for mutable references, because \
                     this method has a `self` receiver",
-                trait_name;
-
-                note = "only `&self`, `&mut self` and no receiver are allowed";
-            );
-        }
+                trait_name
+            ).leak()
+        ),
 
         (ProxyType::Rc, SelfType::Mut)
         | (ProxyType::Rc, SelfType::Value)
@@ -801,24 +796,22 @@ fn check_receiver_compatible(
                 "Arc"
             };
 
-            emit_error!(
-                sig_span,
+            (false, format!(
                 "the trait `{}` cannot be auto-implemented for {}, because \
                     this method has a `{}` receiver",
                     trait_name,
                     ptr_name,
-                    self_arg.as_str().unwrap();
-
-                note = "only `&self` and no receiver are allowed";
-            );
+                    self_arg.as_str().unwrap()
+            ).leak())
         }
 
         (ProxyType::Fn, _) | (ProxyType::FnMut, _) | (ProxyType::FnOnce, _) => {
             // The Fn-trait being compatible with the receiver was already
             // checked before (in `gen_fn_type_for_trait()`).
+            (true, "")
         }
 
-        _ => {} // All other combinations are fine
+        _ => (true, "") // All other combinations are fine
     }
 }
 
