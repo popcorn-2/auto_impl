@@ -58,6 +58,13 @@ fn gen_header(
     // The name of the trait with all generic parameters applied.
     let trait_ident = &trait_def.ident;
     let trait_path = quote! { #trait_ident #trait_generics };
+    
+    let mut impl_attrs = vec![];
+    for attr in &trait_def.attrs {
+        if attr.path().is_ident("stable") {
+            impl_attrs.append(attr.clone());
+        }
+    }
 
     // Here we assemble the parameter list of the impl (the thing in
     // `impl< ... >`). This is simply the parameter list of the trait with
@@ -284,6 +291,7 @@ fn gen_header(
     
     // Combine everything
     quote! {
+        #(#impl_attrs)*
         #safety impl<#impl_generics> #trait_path for #self_ty #where_clause
     }
 }
