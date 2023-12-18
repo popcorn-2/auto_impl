@@ -62,7 +62,7 @@ fn gen_header(
     let mut impl_attrs = vec![];
     for attr in &trait_def.attrs {
         if attr.path().is_ident("stable") {
-            impl_attrs.append(attr.clone());
+            impl_attrs.push(attr.clone());
         }
     }
 
