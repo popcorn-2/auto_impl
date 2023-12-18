@@ -778,7 +778,7 @@ fn check_receiver_compatible(
                     self_arg.as_str().unwrap()).leak()
         ),
         (ProxyType::RefMut, SelfType::Value) => (
-            false
+            false,
             format!(
                 "the trait `{}` cannot be auto-implemented for mutable references, because \
                     this method has a `self` receiver",
