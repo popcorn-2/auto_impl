@@ -279,10 +279,12 @@ fn gen_header(
     } else {
         where_clause.into_token_stream()
     };
-
+    
+    let safety = trait_def.unsafety;
+    
     // Combine everything
     quote! {
-        impl<#impl_generics> #trait_path for #self_ty #where_clause
+        #safety impl<#impl_generics> #trait_path for #self_ty #where_clause
     }
 }
 
