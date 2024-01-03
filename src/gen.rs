@@ -153,6 +153,7 @@ fn gen_header(
                 self_value_param || self_value_return || self_is_bounded_sized
             });
 
+        let sized_required = false;
         let relaxation = if sized_required {
             quote! {}
         } else {
